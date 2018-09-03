@@ -53,3 +53,56 @@ func TestNewRDBByteReader(t *testing.T) {
 	}
 }
 
+func TestReadFieldLength(t *testing.T) {
+	tests := []struct {
+		Buffer        []byte
+		ExpectedValue []byte
+		ExpectedErr   error
+	}{
+		{
+			Buffer:        []byte{0x05},
+			ExpectedValue: []byte{0x05},
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0x42, 0xFF},
+			ExpectedValue: []byte{0x02, 0xFF},
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0x80, 0x42, 0x31, 0x20, 0x53},
+			ExpectedValue: []byte{0x42, 0x31, 0x20, 0x53},
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0x80, 0x42, 0x31, 0x20},
+			ExpectedValue: nil,
+			ExpectedErr:   ErrFormat,
+		},
+		{
+			Buffer:        []byte{0x81, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
+			ExpectedValue: []byte{0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0x81, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
+			ExpectedValue: nil,
+			ExpectedErr:   ErrFormat,
+		},
+		{
+			Buffer:        []byte{0xFF},
+			ExpectedValue: nil,
+			ExpectedErr:   ErrFormat,
+		},
+	}
+
+	for _, tt := range tests {
+		bs, err := readFieldLength(bufio.NewReader(bytes.NewReader(tt.Buffer)))
+		if !bytes.Equal(tt.ExpectedValue, bs) {
+			t.Errorf("Expected '%v' got '%v'", tt.ExpectedValue, bs)
+		}
+		if tt.ExpectedErr != err {
+			t.Errorf("Expected '%v' got '%v'", tt.ExpectedErr, err)
+		}
+	}
+}

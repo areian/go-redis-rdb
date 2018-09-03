@@ -53,3 +53,47 @@ func NewReader(r io.Reader) (*Reader, error) {
 		buffer:  buffer,
 	}, nil
 }
+func readFieldLength(r *bufio.Reader) ([]byte, error) {
+	b, err := r.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+	switch b >> 6 {
+	case 0: // 6 bit integer
+		return []byte{b << 2 >> 2}, nil
+	case 1: // 14 bit integer
+		b2, err := r.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		return []byte{b << 2 >> 2, b2}, nil
+	case 2:
+		var nb int // Numbe of bytes to read
+		switch b << 2 >> 2 {
+		case 0: // 32 bit integer
+			nb = 4
+		case 1: // 64 bit integer
+			nb = 8
+		}
+		bs := make([]byte, nb)
+		n, err := r.Read(bs)
+		if err != nil {
+			return nil, err
+		}
+		if n < nb {
+			return nil, ErrFormat
+		}
+		return bs, nil
+	case 3: //String encoded field
+		switch b << 2 >> 2 {
+		case 0:
+		case 1:
+		case 2:
+		case 4:
+		default:
+			return nil, ErrFormat
+		}
+	}
+	return nil, nil
+}
+
