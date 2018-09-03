@@ -14,6 +14,45 @@ const (
 	maxVersion = 8
 )
 
+// ValueType ...
+type ValueType int
+
+const (
+	// STRING ...
+	STRING ValueType = iota
+	// LIST ...
+	LIST
+	// SET ...
+	SET
+	// ZSET ...
+	ZSET
+	// HASH ...
+	HASH
+	// ZSET2 is ZSET version 2 with doubles stored in binary.
+	ZSET2
+	// MODULE ...
+	MODULE
+	// MODULE2 ...
+	MODULE2
+	// HASHZIPMAP ...
+	HASHZIPMAP
+	// LISTZIPLIST ...
+	LISTZIPLIST
+	// SETINTSET ...
+	SETINTSET
+	// ZSETZIPLLIST ...
+	ZSETZIPLLIST
+	// HASHZIPLIST ...
+	HASHZIPLIST
+	// LISTQUICKLIST ...
+	LISTQUICKLIST
+	// STREAMLISTPACKS ...
+	STREAMLISTPACKS
+)
+
+// RedisString ...
+type RedisString []byte
+
 var (
 	// ErrFormat ...
 	ErrFormat = errors.New("Not an RDB file")
@@ -53,6 +92,21 @@ func NewReader(r io.Reader) (*Reader, error) {
 		buffer:  buffer,
 	}, nil
 }
+
+// Read ...
+func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, []byte, error) {
+	b, err := r.buffer.Peek(1)
+	if err != nil {
+		return 0, 0, 0, nil, nil, err
+	}
+	if bytes.Equal(b, []byte{0xFE}) {
+		if err := setDBNo(r); err != nil {
+			return 0, 0, 0, nil, nil, err
+		}
+	}
+	return 0, 0, 0, nil, nil, nil
+}
+
 func readFieldLength(r *bufio.Reader) ([]byte, error) {
 	b, err := r.ReadByte()
 	if err != nil {
@@ -97,3 +151,15 @@ func readFieldLength(r *bufio.Reader) ([]byte, error) {
 	return nil, nil
 }
 
+func setDBNo(r *Reader) error {
+	b, err := r.buffer.Peek(1)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(b, []byte{0xFE}) {
+		return fmt.Errorf("Not DB Selector")
+	}
+	r.buffer.Discard(1)
+	// r.source.Read()
+	return nil
+}
