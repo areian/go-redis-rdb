@@ -59,6 +59,8 @@ var (
 	ErrFormat = errors.New("Not an RDB file")
 	// ErrVersion ...
 	ErrVersion = errors.New("Unsupported version")
+	// ErrNotSupported ...
+	ErrNotSupported = errors.New("Unsupported feature")
 )
 
 // Reader ...
@@ -146,16 +148,30 @@ func readFieldLength(r *bufio.Reader) (uint64, error) {
 		}
 		return binary.BigEndian.Uint64(pad(bs, 8)), nil
 	case 3: //String encoded field
+		var nb int // Numbe of bytes to read
 		switch b << 2 >> 2 {
 		case 0:
+			nb = 1
 		case 1:
+			nb = 2
 		case 2:
-		case 4:
+			nb = 4
+		case 3:
+			return 0, ErrNotSupported
 		default:
-			return nil, ErrFormat
+			return 0, ErrFormat
 		}
+		bs := make([]byte, nb)
+		n, err := r.Read(bs)
+		if err != nil {
+			return 0, err
+		}
+		if n < nb {
+			return 0, ErrFormat
+		}
+		return binary.BigEndian.Uint64(pad(bs, 8)), nil
 	default:
-		return 0, ErrFormat
+		panic("The universe is broken!") // To satisfy compiler
 	}
 }
 
