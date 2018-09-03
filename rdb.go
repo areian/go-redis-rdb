@@ -70,10 +70,14 @@ type Reader struct {
 // NewReader ...
 func NewReader(r io.Reader) (*Reader, error) {
 	buffer := bufio.NewReader(r)
-	if p, err := buffer.Peek(5); err != nil || !bytes.Equal([]byte("REDIS"), p) {
+
+	buf := make([]byte, 5)
+	if _, err := buffer.Read(buf); err != nil {
+		return nil, err
+	}
+	if !bytes.Equal([]byte("REDIS"), buf) {
 		return nil, ErrFormat
 	}
-	buffer.Discard(5) // Skip peeked bytes
 
 	vbs := make([]byte, 4)
 	buffer.Read(vbs)
