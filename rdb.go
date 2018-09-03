@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	minVersion = 3
+	minVersion = 7
 	maxVersion = 8
 )
 
