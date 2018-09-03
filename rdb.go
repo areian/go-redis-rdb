@@ -3,6 +3,7 @@ package rdb
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -111,20 +112,20 @@ func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, []byte, error) 
 	return 0, 0, 0, nil, nil, nil
 }
 
-func readFieldLength(r *bufio.Reader) ([]byte, error) {
+func readFieldLength(r *bufio.Reader) (uint64, error) {
 	b, err := r.ReadByte()
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	switch b >> 6 {
 	case 0: // 6 bit integer
-		return []byte{b << 2 >> 2}, nil
+		return binary.BigEndian.Uint64(pad([]byte{b << 2 >> 2}, 8)), nil
 	case 1: // 14 bit integer
 		b2, err := r.ReadByte()
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
-		return []byte{b << 2 >> 2, b2}, nil
+		return binary.BigEndian.Uint64(pad([]byte{b << 2 >> 2, b2}, 8)), nil
 	case 2:
 		var nb int // Numbe of bytes to read
 		switch b << 2 >> 2 {
@@ -133,17 +134,17 @@ func readFieldLength(r *bufio.Reader) ([]byte, error) {
 		case 1: // 64 bit integer
 			nb = 8
 		default: // 64 bit integer
-			return nil, ErrFormat
+			return 0, ErrFormat
 		}
 		bs := make([]byte, nb)
 		n, err := r.Read(bs)
 		if err != nil {
-			return nil, err
+			return 0, err
 		}
 		if n < nb {
-			return nil, ErrFormat
+			return 0, ErrFormat
 		}
-		return bs, nil
+		return binary.BigEndian.Uint64(pad(bs, 8)), nil
 	case 3: //String encoded field
 		switch b << 2 >> 2 {
 		case 0:
@@ -153,8 +154,9 @@ func readFieldLength(r *bufio.Reader) ([]byte, error) {
 		default:
 			return nil, ErrFormat
 		}
+	default:
+		return 0, ErrFormat
 	}
-	return nil, nil
 }
 
 func setDBNo(r *Reader) error {
@@ -168,4 +170,13 @@ func setDBNo(r *Reader) error {
 	r.buffer.Discard(1)
 	// r.source.Read()
 	return nil
+}
+
+func pad(bs []byte, size int) []byte {
+	final := make([]byte, size)
+	offset := size - len(bs)
+	for i := 0; i < len(bs); i++ {
+		final[offset+i] = bs[i]
+	}
+	return final
 }

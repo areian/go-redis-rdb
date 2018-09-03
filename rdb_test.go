@@ -78,73 +78,104 @@ func TestNewRDBByteReader(t *testing.T) {
 func TestReadFieldLength(t *testing.T) {
 	tests := []struct {
 		Buffer        []byte
-		ExpectedValue []byte
+		ExpectedValue uint64
 		ExpectedErr   error
 	}{
 		{
 			Buffer:        []byte{0x05},
-			ExpectedValue: []byte{0x05},
+			ExpectedValue: 5,
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0x42, 0xFF},
-			ExpectedValue: []byte{0x02, 0xFF},
+			ExpectedValue: 767,
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0x80, 0x42, 0x31, 0x20, 0x53},
-			ExpectedValue: []byte{0x42, 0x31, 0x20, 0x53},
+			ExpectedValue: 1110515795,
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0x80, 0x42, 0x31, 0x20},
-			ExpectedValue: nil,
+			ExpectedValue: 0,
 			ExpectedErr:   ErrFormat,
 		},
 		{
 			Buffer:        []byte{0x80},
-			ExpectedValue: nil,
+			ExpectedValue: 0,
 			ExpectedErr:   io.EOF,
 		},
 		{
 			Buffer:        []byte{0x81, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
-			ExpectedValue: []byte{0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
+			ExpectedValue: 77162851027281784,
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0x81, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
-			ExpectedValue: nil,
+			ExpectedValue: 0,
 			ExpectedErr:   ErrFormat,
 		},
 		{
 			Buffer:        []byte{0x82, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
-			ExpectedValue: nil,
+			ExpectedValue: 0,
 			ExpectedErr:   ErrFormat,
 		},
 		{
 			Buffer:        []byte{0xFF},
-			ExpectedValue: nil,
+			ExpectedValue: 0,
 			ExpectedErr:   ErrFormat,
 		},
 		{
 			Buffer:        []byte{0x42},
-			ExpectedValue: nil,
+			ExpectedValue: 0,
 			ExpectedErr:   io.EOF,
 		},
 		{
 			Buffer:        []byte{},
-			ExpectedValue: nil,
+			ExpectedValue: 0,
 			ExpectedErr:   io.EOF,
 		},
 	}
 
 	for _, tt := range tests {
 		bs, err := readFieldLength(bufio.NewReader(bytes.NewReader(tt.Buffer)))
-		if !bytes.Equal(tt.ExpectedValue, bs) {
+		if tt.ExpectedValue != bs {
 			t.Errorf("Expected '%v' got '%v'", tt.ExpectedValue, bs)
 		}
 		if tt.ExpectedErr != err {
 			t.Errorf("Expected '%v' got '%v'", tt.ExpectedErr, err)
+		}
+	}
+}
+
+func TestPad(t *testing.T) {
+	tests := []struct {
+		in   []byte
+		size int
+		out  []byte
+	}{
+		{
+			in:   []byte{},
+			size: 8,
+			out:  []byte{0, 0, 0, 0, 0, 0, 0, 0},
+		},
+		{
+			in:   []byte{1},
+			size: 4,
+			out:  []byte{0, 0, 0, 1},
+		},
+		{
+			in:   []byte{1, 2, 3, 0, 0},
+			size: 8,
+			out:  []byte{0, 0, 0, 1, 2, 3, 0, 0},
+		},
+	}
+
+	for _, tt := range tests {
+		bs := pad(tt.in, tt.size)
+		if !bytes.Equal(tt.out, bs) {
+			t.Errorf("Expected '%v' got '%v'", tt.out, bs)
 		}
 	}
 }
