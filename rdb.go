@@ -132,6 +132,8 @@ func readFieldLength(r *bufio.Reader) ([]byte, error) {
 			nb = 4
 		case 1: // 64 bit integer
 			nb = 8
+		default: // 64 bit integer
+			return nil, ErrFormat
 		}
 		bs := make([]byte, nb)
 		n, err := r.Read(bs)

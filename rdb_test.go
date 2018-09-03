@@ -117,6 +117,11 @@ func TestReadFieldLength(t *testing.T) {
 			ExpectedErr:   ErrFormat,
 		},
 		{
+			Buffer:        []byte{0x82, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
+			ExpectedValue: nil,
+			ExpectedErr:   ErrFormat,
+		},
+		{
 			Buffer:        []byte{0xFF},
 			ExpectedValue: nil,
 			ExpectedErr:   ErrFormat,
