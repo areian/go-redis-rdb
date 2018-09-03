@@ -79,10 +79,10 @@ func NewReader(r io.Reader) (*Reader, error) {
 		return nil, ErrFormat
 	}
 
-	vbs := make([]byte, 4)
-	buffer.Read(vbs)
+	buf = make([]byte, 4)
+	buffer.Read(buf)
 
-	v, err := strconv.Atoi(string(vbs))
+	v, err := strconv.Atoi(string(buf))
 	if err != nil {
 		return nil, ErrFormat
 	}
