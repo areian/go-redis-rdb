@@ -105,10 +105,23 @@ func NewReader(r io.Reader) (*Reader, error) {
 		return nil, ErrVersion
 	}
 
+	b, err := buffer.Peek(1)
+	if err != nil {
+		return nil, err
+	}
+	metadata := make(map[string]RedisString)
+	if b[0] == opAux {
+		md, err := readMetadata(buffer)
+		if err != nil {
+			return nil, err
+		}
+		metadata = md
+	}
+
 	return &Reader{
 		Version:  v,
 		buffer:   buffer,
-		Metadata: make(map[string]RedisString),
+		Metadata: metadata,
 	}, nil
 }
 
@@ -120,10 +133,6 @@ func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, []byte, error) 
 			return 0, 0, 0, nil, nil, err
 		}
 		switch b[0] {
-		case opAux:
-			if err := setMetadata(r); err != nil {
-				return 0, 0, 0, nil, nil, err
-			}
 		case opSelectDB:
 			if err := setDBNo(r); err != nil {
 				return 0, 0, 0, nil, nil, err
@@ -184,43 +193,44 @@ func readFieldLength(r *bufio.Reader) (uint64, error) {
 	panic("The universe is broken!")
 }
 
-func setMetadata(r *Reader) error {
+func readMetadata(r *bufio.Reader) (map[string]RedisString, error) {
+	metadata := map[string]RedisString{}
 	for {
 		buf := make([]byte, 1)
-		_, err := r.buffer.Read(buf)
+		_, err := r.Read(buf)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if buf[0] == opSelectDB {
+		if buf[0] == opSelectDB || buf[0] == opEOF {
 			// DB seletor, we have reached the end of the metadata
-			r.buffer.UnreadByte()
-			return nil
+			r.UnreadByte()
+			return metadata, nil
 		}
 		if buf[0] != opAux {
-			r.buffer.UnreadByte()
-			return ErrBadOpCode
+			r.UnreadByte()
+			return nil, ErrBadOpCode
 		}
-		l, err := readFieldLength(r.buffer)
+		l, err := readFieldLength(r)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		buf = make([]byte, l)
-		_, err = r.buffer.Read(buf)
+		_, err = r.Read(buf)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		key := string(buf)
 
-		l, err = readFieldLength(r.buffer)
+		l, err = readFieldLength(r)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		buf = make([]byte, l)
-		_, err = r.buffer.Read(buf)
+		_, err = r.Read(buf)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		r.Metadata[key] = RedisString(buf)
+		metadata[key] = RedisString(buf)
 	}
 }
 

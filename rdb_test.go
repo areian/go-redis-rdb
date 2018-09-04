@@ -26,6 +26,18 @@ func TestNewRDBByteReader(t *testing.T) {
 		},
 		{
 			Redis: []byte{
+				0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x38,
+			},
+			Expected: io.EOF,
+		},
+		{
+			Redis: []byte{
+				0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x30, 0x38, 0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73,
+			},
+			Expected: io.EOF,
+		},
+		{
+			Redis: []byte{
 				0x52, 0x45, 0x44, 0x50, 0x53, 0x30, 0x30, 0x30, 0x38, 0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73,
 				0x2D, 0x76, 0x65, 0x72, 0x06, 0x34, 0x2E, 0x30, 0x2E, 0x31, 0x31, 0xFA, 0x0A, 0x72, 0x65, 0x64,
 				0x69, 0x73, 0x2D, 0x62, 0x69, 0x74, 0x73, 0xC0, 0x40, 0xFA, 0x05, 0x63, 0x74, 0x69, 0x6D, 0x65,
@@ -180,7 +192,7 @@ func TestReadFieldLength(t *testing.T) {
 	}
 }
 
-func TestSetMetadata(t *testing.T) {
+func TestReadMetadata(t *testing.T) {
 	tests := []struct {
 		buffer        []byte
 		expectedValue map[string]RedisString
@@ -206,59 +218,51 @@ func TestSetMetadata(t *testing.T) {
 				0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05, 0x33, 0x2E, 0x32, 0x2E,
 				0x36,
 			},
-			expectedValue: map[string]RedisString{
-				"redis-ver": RedisString("3.2.6"),
-			},
-			expectedErr: io.EOF,
+			expectedValue: nil,
+			expectedErr:   io.EOF,
 		},
 		{
 			buffer: []byte{
 				0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05, 0x33, 0x2E, 0x32, 0x2E,
 				0x36, 0x00,
 			},
-			expectedValue: map[string]RedisString{
-				"redis-ver": RedisString("3.2.6"),
-			},
-			expectedErr: ErrBadOpCode,
+			expectedValue: nil,
+			expectedErr:   ErrBadOpCode,
 		},
 		{
 			buffer: []byte{
 				0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05,
 			},
-			expectedValue: map[string]RedisString{},
+			expectedValue: nil,
 			expectedErr:   io.EOF,
 		},
 		{
 			buffer: []byte{
 				0xFA, 0x09, 0x72,
 			},
-			expectedValue: map[string]RedisString{},
+			expectedValue: nil,
 			expectedErr:   io.EOF,
 		},
 		{
 			buffer: []byte{
 				0xFA, 0x09,
 			},
-			expectedValue: map[string]RedisString{},
+			expectedValue: nil,
 			expectedErr:   io.EOF,
 		},
 		{
 			buffer: []byte{
 				0xFA,
 			},
-			expectedValue: map[string]RedisString{},
+			expectedValue: nil,
 			expectedErr:   io.EOF,
 		},
 	}
 
 	for _, tt := range tests {
-		r := &Reader{
-			buffer:   bufio.NewReader(bytes.NewReader(tt.buffer)),
-			Metadata: make(map[string]RedisString),
-		}
-		err := setMetadata(r)
-		if !reflect.DeepEqual(tt.expectedValue, r.Metadata) {
-			t.Errorf("Expected '%v' got '%v'", tt.expectedValue, r.Metadata)
+		md, err := readMetadata(bufio.NewReader(bytes.NewReader(tt.buffer)))
+		if !reflect.DeepEqual(tt.expectedValue, md) {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedValue, md)
 		}
 		if tt.expectedErr != err {
 			t.Errorf("Expected '%v' got '%v'", tt.expectedErr, err)
