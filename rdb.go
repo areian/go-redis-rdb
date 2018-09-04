@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 )
@@ -51,14 +50,23 @@ const (
 	STREAMLISTPACKS
 )
 
+const (
+	opAux          byte = 0xFA
+	opResizeDB     byte = 0xFB
+	opExpiretimeMs byte = 0xFC
+	opExpiretime   byte = 0xFD
+	opSelectDB     byte = 0xFE
+	opEOF          byte = 0xFF
+)
+
 // RedisString ...
 type RedisString []byte
 
 var (
 	// ErrFormat ...
 	ErrFormat = errors.New("Not an RDB file")
-	// ErrNotAuxField ..
-	ErrNotAuxField = errors.New("Not Auxiliary Field")
+	// ErrBadOpCode ..
+	ErrBadOpCode = errors.New("Bad OP Code")
 	// ErrNotSupported ...
 	ErrNotSupported = errors.New("Unsupported feature")
 	// ErrVersion ...
@@ -112,11 +120,11 @@ func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, []byte, error) 
 			return 0, 0, 0, nil, nil, err
 		}
 		switch b[0] {
-		case 0xFA:
+		case opAux:
 			if err := setMetadata(r); err != nil {
 				return 0, 0, 0, nil, nil, err
 			}
-		case 0xFE:
+		case opSelectDB:
 			if err := setDBNo(r); err != nil {
 				return 0, 0, 0, nil, nil, err
 			}
@@ -183,14 +191,14 @@ func setMetadata(r *Reader) error {
 		if err != nil {
 			return err
 		}
-		if buf[0] == 0xFE {
+		if buf[0] == opSelectDB {
 			// DB seletor, we have reached the end of the metadata
 			r.buffer.UnreadByte()
 			return nil
 		}
-		if buf[0] != 0xFA {
+		if buf[0] != opAux {
 			r.buffer.UnreadByte()
-			return ErrNotAuxField
+			return ErrBadOpCode
 		}
 		l, err := readFieldLength(r.buffer)
 		if err != nil {
@@ -222,9 +230,9 @@ func setDBNo(r *Reader) error {
 	if err != nil {
 		return err
 	}
-	if buf[0] != 0xFE {
+	if buf[0] != opSelectDB {
 		r.buffer.UnreadByte()
-		return fmt.Errorf("Not DB Selector")
+		return ErrBadOpCode
 	}
 	return nil
 }

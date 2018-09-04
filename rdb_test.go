@@ -219,7 +219,7 @@ func TestSetMetadata(t *testing.T) {
 			expectedValue: map[string]RedisString{
 				"redis-ver": RedisString("3.2.6"),
 			},
-			expectedErr: ErrNotAuxField,
+			expectedErr: ErrBadOpCode,
 		},
 		{
 			buffer: []byte{
