@@ -15,7 +15,7 @@ const (
 )
 
 // ValueType ...
-type ValueType int
+type ValueType byte
 
 const (
 	// STRING ...
@@ -125,20 +125,47 @@ func NewReader(r io.Reader) (*Reader, error) {
 	}, nil
 }
 
-// Read ...
-func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, []byte, error) {
-	for {
-		b, err := r.buffer.Peek(1)
-		if err != nil {
+// Read ... Returns dbno, ttl, ValueType, Key, value, error
+func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, RedisString, error) {
+	b, err := r.buffer.Peek(1)
+	if err != nil {
+		return 0, 0, 0, nil, nil, err
+	}
+	if b[0] == opSelectDB {
+		if err = setDBNo(r); err != nil {
 			return 0, 0, 0, nil, nil, err
 		}
-		switch b[0] {
-		case opSelectDB:
-			if err := setDBNo(r); err != nil {
-				return 0, 0, 0, nil, nil, err
+	}
+	ttl, vt, key, value, err := readKeyValuePair(r.buffer)
+	if err != nil {
+		return 0, 0, 0, nil, nil, err
+	}
+	return r.dbno, ttl, vt, key, value, nil
+}
+
+func readKeyValuePair(r *bufio.Reader) (uint64, ValueType, RedisString, RedisString, error) {
+	var ttl uint64
+	buf := []byte{0}
+	for {
+		if _, err := r.Read(buf); err != nil {
+			return 0, 0, nil, nil, err
+		}
+		switch buf[0] {
+		case opExpiretimeMs:
+			t, err := readFieldLength(r)
+			if err != nil {
+				return 0, 0, nil, nil, err
 			}
+			ttl = t
+		case opExpiretime:
+			t, err := readFieldLength(r)
+			if err != nil {
+				return 0, 0, nil, nil, err
+			}
+			ttl = t * 1000
+		// case STRING:
 		default:
-			break
+			return ttl, 0, nil, nil, nil
 		}
 	}
 }
