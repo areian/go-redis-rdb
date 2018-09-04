@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestNewRDBByteReader(t *testing.T) {
+func TestNewReader(t *testing.T) {
 	tests := []struct {
 		Redis    []byte
 		Expected error
