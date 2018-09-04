@@ -266,6 +266,48 @@ func TestSetMetadata(t *testing.T) {
 	}
 }
 
+func TestSetDBNo(t *testing.T) {
+	tests := []struct {
+		buffer        []byte
+		expectedValue uint64
+		expectedErr   error
+	}{
+		{
+			buffer:        []byte{},
+			expectedValue: 0,
+			expectedErr:   io.EOF,
+		},
+		{
+			buffer:        []byte{0xFE, 0x01},
+			expectedValue: 1,
+			expectedErr:   nil,
+		},
+		{
+			buffer:        []byte{0xFA},
+			expectedValue: 0,
+			expectedErr:   ErrBadOpCode,
+		},
+		{
+			buffer:        []byte{0xFE},
+			expectedValue: 0,
+			expectedErr:   io.EOF,
+		},
+	}
+
+	for _, tt := range tests {
+		r := &Reader{
+			buffer: bufio.NewReader(bytes.NewReader(tt.buffer)),
+		}
+		err := setDBNo(r)
+		if err != tt.expectedErr {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedErr, err)
+		}
+		if r.dbno != tt.expectedValue {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedValue, r.dbno)
+		}
+	}
+}
+
 func TestPad(t *testing.T) {
 	tests := []struct {
 		in   []byte
