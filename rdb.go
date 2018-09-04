@@ -145,32 +145,109 @@ func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, RedisString, er
 
 func readKeyValuePair(r *bufio.Reader) (uint64, ValueType, RedisString, RedisString, error) {
 	var ttl uint64
+
+	// Read TTL if available
 	buf := []byte{0}
-	for {
-		if _, err := r.Read(buf); err != nil {
+	if _, err := r.Read(buf); err != nil {
+		return 0, 0, nil, nil, err
+	}
+	switch buf[0] {
+	case opExpiretimeMs:
+		t, err := readLenghtEncodedValue(r)
+		if err != nil {
 			return 0, 0, nil, nil, err
 		}
-		switch buf[0] {
-		case opExpiretimeMs:
-			t, err := readFieldLength(r)
-			if err != nil {
-				return 0, 0, nil, nil, err
-			}
-			ttl = t
-		case opExpiretime:
-			t, err := readFieldLength(r)
-			if err != nil {
-				return 0, 0, nil, nil, err
-			}
-			ttl = t * 1000
-		// case STRING:
-		default:
-			return ttl, 0, nil, nil, nil
+		ttl = t
+	case opExpiretime:
+		t, err := readLenghtEncodedValue(r)
+		if err != nil {
+			return 0, 0, nil, nil, err
 		}
+		ttl = t * 1000
+	default:
+		r.UnreadByte()
+	}
+
+	// Read key/value
+	if _, err := r.Read(buf); err != nil {
+		return 0, 0, nil, nil, err
+	}
+	switch ValueType(buf[0]) {
+	case LIST:
+		//  readListValue()
+		// ttl, , readListValue()
+	}
+
+	return ttl, 0, nil, nil, nil
+}
+
+func readMetadata(r *bufio.Reader) (map[string]RedisString, error) {
+	metadata := map[string]RedisString{}
+	for {
+		buf := make([]byte, 1)
+		_, err := r.Read(buf)
+		if err != nil {
+			return nil, err
+		}
+		if buf[0] == opSelectDB || buf[0] == opEOF {
+			// DB seletor, we have reached the end of the metadata
+			r.UnreadByte()
+			return metadata, nil
+		}
+		if buf[0] != opAux {
+			r.UnreadByte()
+			return nil, ErrBadOpCode
+		}
+
+		key, err := readStringEncodedValue(r)
+		if err != nil {
+			return nil, err
+		}
+		val, err := readStringEncodedValue(r)
+		if err != nil {
+			return nil, err
+		}
+		metadata[string(key)] = val
 	}
 }
 
-func readFieldLength(r *bufio.Reader) (uint64, error) {
+func setDBNo(r *Reader) error {
+	buf := make([]byte, 1)
+	_, err := r.buffer.Read(buf)
+	if err != nil {
+		return err
+	}
+	if buf[0] != opSelectDB {
+		r.buffer.UnreadByte()
+		return ErrBadOpCode
+	}
+	db, err := readLenghtEncodedValue(r.buffer)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.buffer.Read(buf)
+	if err != nil {
+		return err
+	}
+	if buf[0] == opResizeDB {
+		_, err := readLenghtEncodedValue(r.buffer)
+		if err != nil {
+			return err
+		}
+		_, err = readLenghtEncodedValue(r.buffer)
+		if err != nil {
+			return err
+		}
+	} else {
+		r.buffer.UnreadByte()
+	}
+
+	r.dbno = db
+	return nil
+}
+
+func readLenghtEncodedValue(r *bufio.Reader) (uint64, error) {
 	b, err := r.ReadByte()
 	if err != nil {
 		return 0, err
@@ -220,81 +297,21 @@ func readFieldLength(r *bufio.Reader) (uint64, error) {
 	panic("The universe is broken!")
 }
 
-func readMetadata(r *bufio.Reader) (map[string]RedisString, error) {
-	metadata := map[string]RedisString{}
-	for {
-		buf := make([]byte, 1)
-		_, err := r.Read(buf)
-		if err != nil {
-			return nil, err
-		}
-		if buf[0] == opSelectDB || buf[0] == opEOF {
-			// DB seletor, we have reached the end of the metadata
-			r.UnreadByte()
-			return metadata, nil
-		}
-		if buf[0] != opAux {
-			r.UnreadByte()
-			return nil, ErrBadOpCode
-		}
-		l, err := readFieldLength(r)
-		if err != nil {
-			return nil, err
-		}
-		buf = make([]byte, l)
-		_, err = r.Read(buf)
-		if err != nil {
-			return nil, err
-		}
-		key := string(buf)
-
-		l, err = readFieldLength(r)
-		if err != nil {
-			return nil, err
-		}
-		buf = make([]byte, l)
-		_, err = r.Read(buf)
-		if err != nil {
-			return nil, err
-		}
-		metadata[key] = RedisString(buf)
-	}
-}
-
-func setDBNo(r *Reader) error {
-	buf := make([]byte, 1)
-	_, err := r.buffer.Read(buf)
+func readStringEncodedValue(r *bufio.Reader) (RedisString, error) {
+	l, err := readLenghtEncodedValue(r)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if buf[0] != opSelectDB {
-		r.buffer.UnreadByte()
-		return ErrBadOpCode
-	}
-	db, err := readFieldLength(r.buffer)
+	buf := make([]byte, l)
+	n, err := r.Read(buf)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	_, err = r.buffer.Read(buf)
-	if err != nil {
-		return err
+	if uint64(n) < l {
+		return nil, io.EOF
 	}
-	if buf[0] == opResizeDB {
-		_, err := readFieldLength(r.buffer)
-		if err != nil {
-			return err
-		}
-		_, err = readFieldLength(r.buffer)
-		if err != nil {
-			return err
-		}
-	} else {
-		r.buffer.UnreadByte()
-	}
-
-	r.dbno = db
-	return nil
+	key := RedisString(buf)
+	return key, nil
 }
 
 func pad(bs []byte, size int) []byte {

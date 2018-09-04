@@ -182,7 +182,7 @@ func TestReadFieldLength(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		bs, err := readFieldLength(bufio.NewReader(bytes.NewReader(tt.Buffer)))
+		bs, err := readLenghtEncodedValue(bufio.NewReader(bytes.NewReader(tt.Buffer)))
 		if tt.ExpectedValue != bs {
 			t.Errorf("Expected '%v' got '%v'", tt.ExpectedValue, bs)
 		}
