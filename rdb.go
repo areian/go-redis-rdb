@@ -238,6 +238,24 @@ func setDBNo(r *Reader) error {
 	if err != nil {
 		return err
 	}
+
+	_, err = r.buffer.Read(buf)
+	if err != nil {
+		return err
+	}
+	if buf[0] == opResizeDB {
+		_, err := readFieldLength(r.buffer)
+		if err != nil {
+			return err
+		}
+		_, err = readFieldLength(r.buffer)
+		if err != nil {
+			return err
+		}
+	} else {
+		r.buffer.UnreadByte()
+	}
+
 	r.dbno = db
 	return nil
 }

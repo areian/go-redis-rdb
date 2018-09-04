@@ -267,36 +267,76 @@ func TestSetMetadata(t *testing.T) {
 }
 
 func TestSetDBNo(t *testing.T) {
+	initialDbNo := uint64(5)
 	tests := []struct {
-		buffer        []byte
-		expectedValue uint64
-		expectedErr   error
+		buffer                []byte
+		expectedValue         uint64
+		expectedErr           error
+		nextByteExpectedValue []byte
+		nextByteExpectedErr   error
 	}{
 		{
-			buffer:        []byte{},
-			expectedValue: 0,
-			expectedErr:   io.EOF,
+			buffer:                []byte{},
+			expectedValue:         initialDbNo,
+			expectedErr:           io.EOF,
+			nextByteExpectedValue: []byte{},
+			nextByteExpectedErr:   io.EOF,
 		},
 		{
-			buffer:        []byte{0xFE, 0x01},
-			expectedValue: 1,
-			expectedErr:   nil,
+			buffer:                []byte{0xFE, 0x01, 0xFF},
+			expectedValue:         1,
+			expectedErr:           nil,
+			nextByteExpectedValue: []byte{0xFF},
+			nextByteExpectedErr:   nil,
 		},
 		{
-			buffer:        []byte{0xFA},
-			expectedValue: 0,
-			expectedErr:   ErrBadOpCode,
+			buffer:                []byte{0xFE, 0x01},
+			expectedValue:         initialDbNo,
+			expectedErr:           io.EOF,
+			nextByteExpectedValue: []byte{},
+			nextByteExpectedErr:   io.EOF,
 		},
 		{
-			buffer:        []byte{0xFE},
-			expectedValue: 0,
-			expectedErr:   io.EOF,
+			buffer:                []byte{0xFE, 0x01, 0xFB, 0x02, 0x03, 0xFF},
+			expectedValue:         1,
+			expectedErr:           nil,
+			nextByteExpectedValue: []byte{0xFF},
+			nextByteExpectedErr:   nil,
+		},
+		{
+			buffer:                []byte{0xFE, 0x01, 0xFB},
+			expectedValue:         initialDbNo,
+			expectedErr:           io.EOF,
+			nextByteExpectedValue: []byte{},
+			nextByteExpectedErr:   io.EOF,
+		},
+		{
+			buffer:                []byte{0xFE, 0x01, 0xFB, 0x02},
+			expectedValue:         initialDbNo,
+			expectedErr:           io.EOF,
+			nextByteExpectedValue: []byte{},
+			nextByteExpectedErr:   io.EOF,
+		},
+		{
+			buffer:                []byte{0xFA},
+			expectedValue:         initialDbNo,
+			expectedErr:           ErrBadOpCode,
+			nextByteExpectedValue: []byte{},
+			nextByteExpectedErr:   io.EOF,
+		},
+		{
+			buffer:                []byte{0xFE},
+			expectedValue:         initialDbNo,
+			expectedErr:           io.EOF,
+			nextByteExpectedValue: []byte{},
+			nextByteExpectedErr:   io.EOF,
 		},
 	}
 
 	for _, tt := range tests {
 		r := &Reader{
 			buffer: bufio.NewReader(bytes.NewReader(tt.buffer)),
+			dbno:   initialDbNo,
 		}
 		err := setDBNo(r)
 		if err != tt.expectedErr {
@@ -304,6 +344,9 @@ func TestSetDBNo(t *testing.T) {
 		}
 		if r.dbno != tt.expectedValue {
 			t.Errorf("Expected '%v' got '%v'", tt.expectedValue, r.dbno)
+		}
+		if b, err := r.buffer.Peek(1); err != tt.nextByteExpectedErr && bytes.Equal(b, tt.nextByteExpectedValue) {
+			t.Errorf("Expected '%v, %v', got '%v, %v'", tt.nextByteExpectedValue, tt.nextByteExpectedErr, b, err)
 		}
 	}
 }
