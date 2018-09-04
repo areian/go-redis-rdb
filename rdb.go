@@ -57,17 +57,20 @@ type RedisString []byte
 var (
 	// ErrFormat ...
 	ErrFormat = errors.New("Not an RDB file")
-	// ErrVersion ...
-	ErrVersion = errors.New("Unsupported version")
+	// ErrNotAuxField ..
+	ErrNotAuxField = errors.New("Not Auxiliary Field")
 	// ErrNotSupported ...
 	ErrNotSupported = errors.New("Unsupported feature")
+	// ErrVersion ...
+	ErrVersion = errors.New("Unsupported version")
 )
 
 // Reader ...
 type Reader struct {
-	Version int
-	dbno    uint64
-	buffer  *bufio.Reader
+	Version  int
+	Metadata map[string]RedisString
+	dbno     uint64
+	buffer   *bufio.Reader
 }
 
 // NewReader ...
@@ -95,23 +98,32 @@ func NewReader(r io.Reader) (*Reader, error) {
 	}
 
 	return &Reader{
-		Version: v,
-		buffer:  buffer,
+		Version:  v,
+		buffer:   buffer,
+		Metadata: make(map[string]RedisString),
 	}, nil
 }
 
 // Read ...
 func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, []byte, error) {
-	b, err := r.buffer.Peek(1)
-	if err != nil {
-		return 0, 0, 0, nil, nil, err
-	}
-	if bytes.Equal(b, []byte{0xFE}) {
-		if err := setDBNo(r); err != nil {
+	for {
+		b, err := r.buffer.Peek(1)
+		if err != nil {
 			return 0, 0, 0, nil, nil, err
 		}
+		switch b[0] {
+		case 0xFA:
+			if err := setMetadata(r); err != nil {
+				return 0, 0, 0, nil, nil, err
+			}
+		case 0xFE:
+			if err := setDBNo(r); err != nil {
+				return 0, 0, 0, nil, nil, err
+			}
+		default:
+			break
+		}
 	}
-	return 0, 0, 0, nil, nil, nil
 }
 
 func readFieldLength(r *bufio.Reader) (uint64, error) {
@@ -148,43 +160,72 @@ func readFieldLength(r *bufio.Reader) (uint64, error) {
 		}
 		return binary.BigEndian.Uint64(pad(bs, 8)), nil
 	case 3: //String encoded field
-		var nb int // Numbe of bytes to read
 		switch b << 2 >> 2 {
 		case 0:
-			nb = 1
+			return 1, nil
 		case 1:
-			nb = 2
+			return 2, nil
 		case 2:
-			nb = 4
+			return 4, nil
 		case 3:
 			return 0, ErrNotSupported
 		default:
 			return 0, ErrFormat
 		}
-		bs := make([]byte, nb)
-		n, err := r.Read(bs)
+	}
+	panic("The universe is broken!")
+}
+
+func setMetadata(r *Reader) error {
+	for {
+		buf := make([]byte, 1)
+		_, err := r.buffer.Read(buf)
 		if err != nil {
-			return 0, err
+			return err
 		}
-		if n < nb {
-			return 0, ErrFormat
+		if buf[0] == 0xFE {
+			// DB seletor, we have reached the end of the metadata
+			r.buffer.UnreadByte()
+			return nil
 		}
-		return binary.BigEndian.Uint64(pad(bs, 8)), nil
-	default:
-		panic("The universe is broken!") // To satisfy compiler
+		if buf[0] != 0xFA {
+			r.buffer.UnreadByte()
+			return ErrNotAuxField
+		}
+		l, err := readFieldLength(r.buffer)
+		if err != nil {
+			return err
+		}
+		buf = make([]byte, l)
+		_, err = r.buffer.Read(buf)
+		if err != nil {
+			return err
+		}
+		key := string(buf)
+
+		l, err = readFieldLength(r.buffer)
+		if err != nil {
+			return err
+		}
+		buf = make([]byte, l)
+		_, err = r.buffer.Read(buf)
+		if err != nil {
+			return err
+		}
+		r.Metadata[key] = RedisString(buf)
 	}
 }
 
 func setDBNo(r *Reader) error {
-	b, err := r.buffer.Peek(1)
+	buf := make([]byte, 1)
+	_, err := r.buffer.Read(buf)
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(b, []byte{0xFE}) {
+	if buf[0] != 0xFE {
+		r.buffer.UnreadByte()
 		return fmt.Errorf("Not DB Selector")
 	}
-	r.buffer.Discard(1)
-	// r.source.Read()
 	return nil
 }
 

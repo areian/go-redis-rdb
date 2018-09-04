@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"reflect"
 	"testing"
 )
 
@@ -128,23 +129,23 @@ func TestReadFieldLength(t *testing.T) {
 		},
 		{
 			Buffer:        []byte{0xC1, 0x01, 0x02},
-			ExpectedValue: 258,
+			ExpectedValue: 2,
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0xC2, 0x01, 0x02, 0x03, 0x04},
-			ExpectedValue: 16909060,
+			ExpectedValue: 4,
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0xC2, 0x01, 0x02, 0x03},
-			ExpectedValue: 0,
-			ExpectedErr:   ErrFormat,
+			ExpectedValue: 4,
+			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0xC0},
-			ExpectedValue: 0,
-			ExpectedErr:   io.EOF,
+			ExpectedValue: 1,
+			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0xC3, 0x01, 0x02, 0x03, 0x04},
@@ -175,6 +176,92 @@ func TestReadFieldLength(t *testing.T) {
 		}
 		if tt.ExpectedErr != err {
 			t.Errorf("Expected '%v' got '%v'", tt.ExpectedErr, err)
+		}
+	}
+}
+
+func TestSetMetadata(t *testing.T) {
+	tests := []struct {
+		buffer        []byte
+		expectedValue map[string]RedisString
+		expectedErr   error
+	}{
+		{
+			buffer: []byte{
+				0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05, 0x33, 0x2E, 0x32, 0x2E,
+				0x36, 0xFA, 0x0A, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x62, 0x69, 0x74, 0x73, 0xC0, 0x40, 0xFA,
+				0x05, 0x63, 0x74, 0x69, 0x6D, 0x65, 0xC2, 0xB4, 0xF5, 0x88, 0x5B, 0xFA, 0x08, 0x75, 0x73, 0x65,
+				0x64, 0x2D, 0x6D, 0x65, 0x6D, 0xC2, 0x08, 0x62, 0xDF, 0x38, 0xFE,
+			},
+			expectedValue: map[string]RedisString{
+				"redis-ver":  RedisString("3.2.6"),
+				"redis-bits": RedisString([]byte{0x40}),
+				"ctime":      RedisString([]byte{0xB4, 0xF5, 0x88, 0x5B}),
+				"used-mem":   RedisString([]byte{0x08, 0x62, 0xDF, 0x38}),
+			},
+			expectedErr: nil,
+		},
+		{
+			buffer: []byte{
+				0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05, 0x33, 0x2E, 0x32, 0x2E,
+				0x36,
+			},
+			expectedValue: map[string]RedisString{
+				"redis-ver": RedisString("3.2.6"),
+			},
+			expectedErr: io.EOF,
+		},
+		{
+			buffer: []byte{
+				0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05, 0x33, 0x2E, 0x32, 0x2E,
+				0x36, 0x00,
+			},
+			expectedValue: map[string]RedisString{
+				"redis-ver": RedisString("3.2.6"),
+			},
+			expectedErr: ErrNotAuxField,
+		},
+		{
+			buffer: []byte{
+				0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x05,
+			},
+			expectedValue: map[string]RedisString{},
+			expectedErr:   io.EOF,
+		},
+		{
+			buffer: []byte{
+				0xFA, 0x09, 0x72,
+			},
+			expectedValue: map[string]RedisString{},
+			expectedErr:   io.EOF,
+		},
+		{
+			buffer: []byte{
+				0xFA, 0x09,
+			},
+			expectedValue: map[string]RedisString{},
+			expectedErr:   io.EOF,
+		},
+		{
+			buffer: []byte{
+				0xFA,
+			},
+			expectedValue: map[string]RedisString{},
+			expectedErr:   io.EOF,
+		},
+	}
+
+	for _, tt := range tests {
+		r := &Reader{
+			buffer:   bufio.NewReader(bytes.NewReader(tt.buffer)),
+			Metadata: make(map[string]RedisString),
+		}
+		err := setMetadata(r)
+		if !reflect.DeepEqual(tt.expectedValue, r.Metadata) {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedValue, r.Metadata)
+		}
+		if tt.expectedErr != err {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedErr, err)
 		}
 	}
 }
