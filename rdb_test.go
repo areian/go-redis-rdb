@@ -226,6 +226,47 @@ func TestSetDBNo(t *testing.T) {
 	}
 }
 
+func TestReadListEncodedValue(t *testing.T) {
+	tests := []struct {
+		buffer        []byte
+		expectedValue []RedisString
+		expectedRaw   []byte
+		expectedErr   error
+	}{
+		{
+			buffer:        []byte{0x02, 0x05, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x06, 0x77, 0x6F, 0x72, 0x6C, 0x64, 0x21},
+			expectedValue: []RedisString{RedisString("Hello"), RedisString("world!")},
+			expectedRaw:   []byte{0x02, 0x05, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x06, 0x77, 0x6F, 0x72, 0x6C, 0x64, 0x21},
+			expectedErr:   nil,
+		},
+		{
+			buffer:        []byte{0x02, 0x05, 0x48, 0x65, 0x6C, 0x6C, 0x6F},
+			expectedValue: nil,
+			expectedRaw:   nil,
+			expectedErr:   io.EOF,
+		},
+		{
+			buffer:        []byte{},
+			expectedValue: nil,
+			expectedRaw:   nil,
+			expectedErr:   io.EOF,
+		},
+	}
+
+	for _, tt := range tests {
+		list, raw, err := readListEncodedValue(bufio.NewReader(bytes.NewReader(tt.buffer)))
+		if !reflect.DeepEqual(tt.expectedValue, list) {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedValue, list)
+		}
+		if !bytes.Equal(tt.expectedRaw, raw) {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedRaw, raw)
+		}
+		if tt.expectedErr != err {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedErr, err)
+		}
+	}
+}
+
 func TestReadLenghtEncodedValue(t *testing.T) {
 	tests := []struct {
 		Buffer        []byte

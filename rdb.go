@@ -145,6 +145,7 @@ func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, RedisString, er
 
 func readKeyValuePair(r *bufio.Reader) (uint64, ValueType, RedisString, []byte, error) {
 	var ttl uint64
+	var vt ValueType
 
 	// Read TTL if available
 	buf := []byte{0}
@@ -172,13 +173,21 @@ func readKeyValuePair(r *bufio.Reader) (uint64, ValueType, RedisString, []byte, 
 	if _, err := r.Read(buf); err != nil {
 		return 0, 0, nil, nil, err
 	}
-	switch ValueType(buf[0]) {
-	case LIST:
-		//  readListValue()
-		// ttl, , readListValue()
+	vt = ValueType(buf[0])
+	key, _, err := readStringEncodedValue(r)
+	if err != nil {
+		return 0, 0, nil, nil, err
 	}
-
-	return ttl, 0, nil, nil, nil
+	switch vt {
+	case LIST:
+		_, raw, err := readListEncodedValue(r)
+		if err != nil {
+			return 0, 0, nil, nil, err
+		}
+		return ttl, vt, key, raw, nil
+	default:
+		return 0, 0, nil, nil, ErrNotSupported
+	}
 }
 
 func readMetadata(r *bufio.Reader) (map[string]RedisString, error) {
@@ -245,6 +254,25 @@ func setDBNo(r *Reader) error {
 
 	r.dbno = db
 	return nil
+}
+
+func readListEncodedValue(r *bufio.Reader) ([]RedisString, []byte, error) {
+	raw := bytes.NewBuffer([]byte{})
+	ll, b, err := readLenghtEncodedValue(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	raw.Write(b)
+	rsl := (make([]RedisString, ll))
+	for i := uint64(0); i < ll; i++ {
+		rs, b, err := readStringEncodedValue(r)
+		if err != nil {
+			return nil, nil, err
+		}
+		raw.Write(b)
+		rsl[i] = rs
+	}
+	return rsl, raw.Bytes(), nil
 }
 
 func readLenghtEncodedValue(r *bufio.Reader) (uint64, []byte, error) {
