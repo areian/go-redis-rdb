@@ -88,110 +88,6 @@ func TestNewReader(t *testing.T) {
 	}
 }
 
-func TestReadFieldLength(t *testing.T) {
-	tests := []struct {
-		Buffer        []byte
-		ExpectedValue uint64
-		ExpectedErr   error
-	}{
-		{
-			Buffer:        []byte{0x05},
-			ExpectedValue: 5,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0x42, 0xFF},
-			ExpectedValue: 767,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0x80, 0x42, 0x31, 0x20, 0x53},
-			ExpectedValue: 1110515795,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0x80, 0x42, 0x31, 0x20},
-			ExpectedValue: 0,
-			ExpectedErr:   ErrFormat,
-		},
-		{
-			Buffer:        []byte{0x80},
-			ExpectedValue: 0,
-			ExpectedErr:   io.EOF,
-		},
-		{
-			Buffer:        []byte{0x81, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
-			ExpectedValue: 77162851027281784,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0x81, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
-			ExpectedValue: 0,
-			ExpectedErr:   ErrFormat,
-		},
-		{
-			Buffer:        []byte{0x82, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
-			ExpectedValue: 0,
-			ExpectedErr:   ErrFormat,
-		},
-		{
-			Buffer:        []byte{0xC0, 0x01},
-			ExpectedValue: 1,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0xC1, 0x01, 0x02},
-			ExpectedValue: 2,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0xC2, 0x01, 0x02, 0x03, 0x04},
-			ExpectedValue: 4,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0xC2, 0x01, 0x02, 0x03},
-			ExpectedValue: 4,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0xC0},
-			ExpectedValue: 1,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0xC3, 0x01, 0x02, 0x03, 0x04},
-			ExpectedValue: 0,
-			ExpectedErr:   ErrNotSupported,
-		},
-		{
-			Buffer:        []byte{0xFF},
-			ExpectedValue: 0,
-			ExpectedErr:   ErrFormat,
-		},
-		{
-			Buffer:        []byte{0x42},
-			ExpectedValue: 0,
-			ExpectedErr:   io.EOF,
-		},
-		{
-			Buffer:        []byte{},
-			ExpectedValue: 0,
-			ExpectedErr:   io.EOF,
-		},
-	}
-
-	for _, tt := range tests {
-		bs, err := readLenghtEncodedValue(bufio.NewReader(bytes.NewReader(tt.Buffer)))
-		if tt.ExpectedValue != bs {
-			t.Errorf("Expected '%v' got '%v'", tt.ExpectedValue, bs)
-		}
-		if tt.ExpectedErr != err {
-			t.Errorf("Expected '%v' got '%v'", tt.ExpectedErr, err)
-		}
-	}
-}
-
 func TestReadMetadata(t *testing.T) {
 	tests := []struct {
 		buffer        []byte
@@ -355,6 +251,109 @@ func TestSetDBNo(t *testing.T) {
 	}
 }
 
+func TestReadLenghtEncodedValue(t *testing.T) {
+	tests := []struct {
+		Buffer        []byte
+		ExpectedValue uint64
+		ExpectedErr   error
+	}{
+		{
+			Buffer:        []byte{0x05},
+			ExpectedValue: 5,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0x42, 0xFF},
+			ExpectedValue: 767,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0x80, 0x42, 0x31, 0x20, 0x53},
+			ExpectedValue: 1110515795,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0x80, 0x42, 0x31, 0x20},
+			ExpectedValue: 0,
+			ExpectedErr:   ErrFormat,
+		},
+		{
+			Buffer:        []byte{0x80},
+			ExpectedValue: 0,
+			ExpectedErr:   io.EOF,
+		},
+		{
+			Buffer:        []byte{0x81, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
+			ExpectedValue: 77162851027281784,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0x81, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
+			ExpectedValue: 0,
+			ExpectedErr:   ErrFormat,
+		},
+		{
+			Buffer:        []byte{0x82, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
+			ExpectedValue: 0,
+			ExpectedErr:   ErrFormat,
+		},
+		{
+			Buffer:        []byte{0xC0, 0x01},
+			ExpectedValue: 1,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0xC1, 0x01, 0x02},
+			ExpectedValue: 2,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0xC2, 0x01, 0x02, 0x03, 0x04},
+			ExpectedValue: 4,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0xC2, 0x01, 0x02, 0x03},
+			ExpectedValue: 4,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0xC0},
+			ExpectedValue: 1,
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0xC3, 0x01, 0x02, 0x03, 0x04},
+			ExpectedValue: 0,
+			ExpectedErr:   ErrNotSupported,
+		},
+		{
+			Buffer:        []byte{0xFF},
+			ExpectedValue: 0,
+			ExpectedErr:   ErrFormat,
+		},
+		{
+			Buffer:        []byte{0x42},
+			ExpectedValue: 0,
+			ExpectedErr:   io.EOF,
+		},
+		{
+			Buffer:        []byte{},
+			ExpectedValue: 0,
+			ExpectedErr:   io.EOF,
+		},
+	}
+
+	for _, tt := range tests {
+		bs, err := readLenghtEncodedValue(bufio.NewReader(bytes.NewReader(tt.Buffer)))
+		if tt.ExpectedValue != bs {
+			t.Errorf("Expected '%v' got '%v'", tt.ExpectedValue, bs)
+		}
+		if tt.ExpectedErr != err {
+			t.Errorf("Expected '%v' got '%v'", tt.ExpectedErr, err)
+		}
+	}
+}
 func TestPad(t *testing.T) {
 	tests := []struct {
 		in   []byte
