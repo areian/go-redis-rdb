@@ -185,6 +185,12 @@ func readKeyValuePair(r *bufio.Reader) (uint64, ValueType, RedisString, []byte, 
 			return 0, 0, nil, nil, err
 		}
 		return ttl, vt, key, raw, nil
+	case SET:
+		_, raw, err := readListEncodedValue(r)
+		if err != nil {
+			return 0, 0, nil, nil, err
+		}
+		return ttl, vt, key, raw, nil
 	default:
 		return 0, 0, nil, nil, ErrNotSupported
 	}
