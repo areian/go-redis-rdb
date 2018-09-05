@@ -143,7 +143,7 @@ func (r *Reader) Read() (uint64, uint64, ValueType, RedisString, RedisString, er
 	return r.dbno, ttl, vt, key, value, nil
 }
 
-func readKeyValuePair(r *bufio.Reader) (uint64, ValueType, RedisString, RedisString, error) {
+func readKeyValuePair(r *bufio.Reader) (uint64, ValueType, RedisString, []byte, error) {
 	var ttl uint64
 
 	// Read TTL if available
@@ -153,13 +153,13 @@ func readKeyValuePair(r *bufio.Reader) (uint64, ValueType, RedisString, RedisStr
 	}
 	switch buf[0] {
 	case opExpiretimeMs:
-		t, err := readLenghtEncodedValue(r)
+		t, _, err := readLenghtEncodedValue(r)
 		if err != nil {
 			return 0, 0, nil, nil, err
 		}
 		ttl = t
 	case opExpiretime:
-		t, err := readLenghtEncodedValue(r)
+		t, _, err := readLenghtEncodedValue(r)
 		if err != nil {
 			return 0, 0, nil, nil, err
 		}
@@ -199,11 +199,11 @@ func readMetadata(r *bufio.Reader) (map[string]RedisString, error) {
 			return nil, ErrBadOpCode
 		}
 
-		key, err := readStringEncodedValue(r)
+		key, _, err := readStringEncodedValue(r)
 		if err != nil {
 			return nil, err
 		}
-		val, err := readStringEncodedValue(r)
+		val, _, err := readStringEncodedValue(r)
 		if err != nil {
 			return nil, err
 		}
@@ -221,7 +221,7 @@ func setDBNo(r *Reader) error {
 		r.buffer.UnreadByte()
 		return ErrBadOpCode
 	}
-	db, err := readLenghtEncodedValue(r.buffer)
+	db, _, err := readLenghtEncodedValue(r.buffer)
 	if err != nil {
 		return err
 	}
@@ -231,11 +231,11 @@ func setDBNo(r *Reader) error {
 		return err
 	}
 	if buf[0] == opResizeDB {
-		_, err := readLenghtEncodedValue(r.buffer)
+		_, _, err := readLenghtEncodedValue(r.buffer)
 		if err != nil {
 			return err
 		}
-		_, err = readLenghtEncodedValue(r.buffer)
+		_, _, err = readLenghtEncodedValue(r.buffer)
 		if err != nil {
 			return err
 		}
@@ -247,20 +247,23 @@ func setDBNo(r *Reader) error {
 	return nil
 }
 
-func readLenghtEncodedValue(r *bufio.Reader) (uint64, error) {
+func readLenghtEncodedValue(r *bufio.Reader) (uint64, []byte, error) {
+	raw := bytes.NewBuffer([]byte{})
 	b, err := r.ReadByte()
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
+	raw.WriteByte(b)
 	switch b >> 6 {
 	case 0: // 6 bit integer
-		return binary.BigEndian.Uint64(pad([]byte{b << 2 >> 2}, 8)), nil
+		return binary.BigEndian.Uint64(pad([]byte{b << 2 >> 2}, 8)), raw.Bytes(), nil
 	case 1: // 14 bit integer
 		b2, err := r.ReadByte()
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
-		return binary.BigEndian.Uint64(pad([]byte{b << 2 >> 2, b2}, 8)), nil
+		raw.WriteByte(b2)
+		return binary.BigEndian.Uint64(pad([]byte{b << 2 >> 2, b2}, 8)), raw.Bytes(), nil
 	case 2:
 		var nb int // Numbe of bytes to read
 		switch b << 2 >> 2 {
@@ -269,49 +272,53 @@ func readLenghtEncodedValue(r *bufio.Reader) (uint64, error) {
 		case 1: // 64 bit integer
 			nb = 8
 		default: // 64 bit integer
-			return 0, ErrFormat
+			return 0, nil, ErrFormat
 		}
 		bs := make([]byte, nb)
 		n, err := r.Read(bs)
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 		if n < nb {
-			return 0, ErrFormat
+			return 0, nil, ErrFormat
 		}
-		return binary.BigEndian.Uint64(pad(bs, 8)), nil
+		raw.Write(bs)
+		return binary.BigEndian.Uint64(pad(bs, 8)), raw.Bytes(), nil
 	case 3: //String encoded field
 		switch b << 2 >> 2 {
 		case 0:
-			return 1, nil
+			return 1, raw.Bytes(), nil
 		case 1:
-			return 2, nil
+			return 2, raw.Bytes(), nil
 		case 2:
-			return 4, nil
+			return 4, raw.Bytes(), nil
 		case 3:
-			return 0, ErrNotSupported
+			return 0, nil, ErrNotSupported
 		default:
-			return 0, ErrFormat
+			return 0, nil, ErrFormat
 		}
 	}
 	panic("The universe is broken!")
 }
 
-func readStringEncodedValue(r *bufio.Reader) (RedisString, error) {
-	l, err := readLenghtEncodedValue(r)
+func readStringEncodedValue(r *bufio.Reader) (RedisString, []byte, error) {
+	raw := bytes.NewBuffer([]byte{})
+	l, b, err := readLenghtEncodedValue(r)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	raw.Write(b)
 	buf := make([]byte, l)
 	n, err := r.Read(buf)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if uint64(n) < l {
-		return nil, io.EOF
+		return nil, nil, io.EOF
 	}
+	raw.Write(buf)
 	key := RedisString(buf)
-	return key, nil
+	return key, raw.Bytes(), nil
 }
 
 func pad(bs []byte, size int) []byte {

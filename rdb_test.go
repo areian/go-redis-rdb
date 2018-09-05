@@ -230,102 +230,111 @@ func TestReadLenghtEncodedValue(t *testing.T) {
 	tests := []struct {
 		Buffer        []byte
 		ExpectedValue uint64
+		ExpectedRaw   []byte
 		ExpectedErr   error
 	}{
 		{
 			Buffer:        []byte{0x05},
 			ExpectedValue: 5,
+			ExpectedRaw:   []byte{0x05},
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0x42, 0xFF},
 			ExpectedValue: 767,
+			ExpectedRaw:   []byte{0x42, 0xFF},
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0x80, 0x42, 0x31, 0x20, 0x53},
 			ExpectedValue: 1110515795,
+			ExpectedRaw:   []byte{0x80, 0x42, 0x31, 0x20, 0x53},
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0x80, 0x42, 0x31, 0x20},
 			ExpectedValue: 0,
+			ExpectedRaw:   nil,
 			ExpectedErr:   ErrFormat,
 		},
 		{
 			Buffer:        []byte{0x80},
 			ExpectedValue: 0,
+			ExpectedRaw:   nil,
 			ExpectedErr:   io.EOF,
 		},
 		{
 			Buffer:        []byte{0x81, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
 			ExpectedValue: 77162851027281784,
+			ExpectedRaw:   []byte{0x81, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0x81, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
 			ExpectedValue: 0,
+			ExpectedRaw:   nil,
 			ExpectedErr:   ErrFormat,
 		},
 		{
 			Buffer:        []byte{0x82, 0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78},
 			ExpectedValue: 0,
+			ExpectedRaw:   nil,
 			ExpectedErr:   ErrFormat,
-		},
-		{
-			Buffer:        []byte{0xC0, 0x01},
-			ExpectedValue: 1,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0xC1, 0x01, 0x02},
-			ExpectedValue: 2,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0xC2, 0x01, 0x02, 0x03, 0x04},
-			ExpectedValue: 4,
-			ExpectedErr:   nil,
-		},
-		{
-			Buffer:        []byte{0xC2, 0x01, 0x02, 0x03},
-			ExpectedValue: 4,
-			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0xC0},
 			ExpectedValue: 1,
+			ExpectedRaw:   []byte{0xC0},
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0xC1},
+			ExpectedValue: 2,
+			ExpectedRaw:   []byte{0xC1},
+			ExpectedErr:   nil,
+		},
+		{
+			Buffer:        []byte{0xC2},
+			ExpectedValue: 4,
+			ExpectedRaw:   []byte{0xC2},
 			ExpectedErr:   nil,
 		},
 		{
 			Buffer:        []byte{0xC3, 0x01, 0x02, 0x03, 0x04},
 			ExpectedValue: 0,
+			ExpectedRaw:   nil,
 			ExpectedErr:   ErrNotSupported,
 		},
 		{
 			Buffer:        []byte{0xFF},
 			ExpectedValue: 0,
+			ExpectedRaw:   nil,
 			ExpectedErr:   ErrFormat,
 		},
 		{
 			Buffer:        []byte{0x42},
 			ExpectedValue: 0,
+			ExpectedRaw:   nil,
 			ExpectedErr:   io.EOF,
 		},
 		{
 			Buffer:        []byte{},
 			ExpectedValue: 0,
+			ExpectedRaw:   nil,
 			ExpectedErr:   io.EOF,
 		},
 	}
 
-	for _, tt := range tests {
-		bs, err := readLenghtEncodedValue(bufio.NewReader(bytes.NewReader(tt.Buffer)))
+	for i, tt := range tests {
+		bs, raw, err := readLenghtEncodedValue(bufio.NewReader(bytes.NewReader(tt.Buffer)))
 		if tt.ExpectedValue != bs {
-			t.Errorf("Expected '%v' got '%v'", tt.ExpectedValue, bs)
+			t.Errorf("Failed '%d': Expected '%v' got '%v'", i, tt.ExpectedValue, bs)
+		}
+		if !bytes.Equal(tt.ExpectedRaw, raw) {
+			t.Errorf("Failed '%d': Expected '%v' got '%v'", i, tt.ExpectedRaw, raw)
 		}
 		if tt.ExpectedErr != err {
-			t.Errorf("Expected '%v' got '%v'", tt.ExpectedErr, err)
+			t.Errorf("Failed '%d': Expected '%v' got '%v'", i, tt.ExpectedErr, err)
 		}
 	}
 }
@@ -334,34 +343,42 @@ func TestReadStringEncodedValue(t *testing.T) {
 	tests := []struct {
 		buffer        []byte
 		expectedValue RedisString
+		expectedRaw   []byte
 		expectedErr   error
 	}{
 		{
 			buffer:        []byte{0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x77, 0x6F, 0x72, 0x6C, 0x64, 0x21},
 			expectedValue: RedisString("Hello, world!"),
+			expectedRaw:   []byte{0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x77, 0x6F, 0x72, 0x6C, 0x64, 0x21},
 			expectedErr:   nil,
 		},
 		{
 			buffer:        []byte{0x0D, 0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x77, 0x6F, 0x72, 0x6C, 0x64},
 			expectedValue: RedisString(""),
+			expectedRaw:   nil,
 			expectedErr:   io.EOF,
 		},
 		{
 			buffer:        []byte{0x01},
 			expectedValue: RedisString(""),
+			expectedRaw:   nil,
 			expectedErr:   io.EOF,
 		},
 		{
 			buffer:        []byte{},
 			expectedValue: RedisString(""),
+			expectedRaw:   nil,
 			expectedErr:   io.EOF,
 		},
 	}
 
 	for _, tt := range tests {
-		rs, err := readStringEncodedValue(bufio.NewReader(bytes.NewReader(tt.buffer)))
+		rs, raw, err := readStringEncodedValue(bufio.NewReader(bytes.NewReader(tt.buffer)))
 		if !bytes.Equal(tt.expectedValue, rs) {
 			t.Errorf("Expected '%v' got '%v'", tt.expectedValue, rs)
+		}
+		if !bytes.Equal(tt.expectedRaw, raw) {
+			t.Errorf("Expected '%v' got '%v'", tt.expectedRaw, raw)
 		}
 		if tt.expectedErr != err {
 			t.Errorf("Expected '%v' got '%v'", tt.expectedErr, err)
