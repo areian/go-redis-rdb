@@ -50,6 +50,7 @@ const (
 	StreamListPacks
 )
 
+// OP codes
 const (
 	opAux          byte = 0xFA
 	opResizeDB     byte = 0xFB
@@ -57,6 +58,18 @@ const (
 	opExpiretime   byte = 0xFD
 	opSelectDB     byte = 0xFE
 	opEOF          byte = 0xFF
+)
+
+// Encoding masks and values
+const (
+	encTypeMask byte = 0xC0
+	encValMask  byte = 0x3F
+	enc6bitVal  byte = 0x00
+	enc14bitVal byte = 0x40
+	encXXbitVal byte = 0x80
+	enc32bitVal byte = 0x80
+	enc64bitVal byte = 0x81
+	encStrVal   byte = 0xC0
 )
 
 // RedisString ...
@@ -288,24 +301,24 @@ func readLenghtEncodedValue(r *bufio.Reader) (uint64, []byte, error) {
 		return 0, nil, err
 	}
 	raw.WriteByte(b)
-	switch b >> 6 {
-	case 0: // 6 bit integer
-		return binary.BigEndian.Uint64(pad([]byte{b << 2 >> 2}, 8)), raw.Bytes(), nil
-	case 1: // 14 bit integer
+	switch b & encTypeMask {
+	case enc6bitVal:
+		return binary.BigEndian.Uint64(pad([]byte{b & encValMask}, 8)), raw.Bytes(), nil
+	case enc14bitVal:
 		b2, err := r.ReadByte()
 		if err != nil {
 			return 0, nil, err
 		}
 		raw.WriteByte(b2)
-		return binary.BigEndian.Uint64(pad([]byte{b << 2 >> 2, b2}, 8)), raw.Bytes(), nil
-	case 2:
+		return binary.BigEndian.Uint64(pad([]byte{b & encValMask, b2}, 8)), raw.Bytes(), nil
+	case encXXbitVal:
 		var nb int // Numbe of bytes to read
-		switch b << 2 >> 2 {
-		case 0: // 32 bit integer
+		switch b {
+		case enc32bitVal:
 			nb = 4
-		case 1: // 64 bit integer
+		case enc64bitVal:
 			nb = 8
-		default: // 64 bit integer
+		default:
 			return 0, nil, ErrFormat
 		}
 		bs := make([]byte, nb)
@@ -318,15 +331,15 @@ func readLenghtEncodedValue(r *bufio.Reader) (uint64, []byte, error) {
 		}
 		raw.Write(bs)
 		return binary.BigEndian.Uint64(pad(bs, 8)), raw.Bytes(), nil
-	case 3: //String encoded field
-		switch b << 2 >> 2 {
-		case 0:
+	case encStrVal:
+		switch b & encValMask {
+		case 0: // 8 bit value
 			return 1, raw.Bytes(), nil
-		case 1:
+		case 1: // 16 bit value
 			return 2, raw.Bytes(), nil
-		case 2:
+		case 2: // 32 bit value
 			return 4, raw.Bytes(), nil
-		case 3:
+		case 3: // Compressed
 			return 0, nil, ErrNotSupported
 		default:
 			return 0, nil, ErrFormat
